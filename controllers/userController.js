@@ -27,7 +27,10 @@ router.post("/login", async (req, res) => {
         // req.session.userId = userToLogin._id;
         // req.session.username = userToLogin.username;
 
-        res.json({ user: userToLogin, message: "sucesss" });
+        res.json({
+          user: { username: userToLogin.username, _id: userToLogin._id },
+          message: "sucesss",
+        });
       } else {
         res.status(401).json({ message: "Incorrect Password" });
       }
