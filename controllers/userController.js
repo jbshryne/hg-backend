@@ -5,7 +5,7 @@ const bcrypt = require("bcrypt");
 
 router.get("/hi", (req, res) => {
   console.log("hi");
-  res.json({ success: false });
+  res.json({ success: true });
 });
 
 router.get("/login", (req, res) => {
