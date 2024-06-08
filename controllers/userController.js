@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/user");
 const bcrypt = require("bcrypt");
+const axios = require("axios");
 
 router.get("/hi", (req, res) => {
   console.log("hi");
@@ -66,13 +67,46 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-router.get("/get-user-key/:username", async (req, res) => {
+router.post("/user-message/:username", async (req, res) => {
   const username = req.params.username;
+  const { message, conversationHistory } = req.body;
   const currentUser = await User.findOne({ username: username });
 
-  console.log("currentUser: ", currentUser._id, currentUser.openai_key);
+  const openai_key = currentUser.openai_key;
 
-  res.json({ openai_key: currentUser.openai_key, success: true });
+  if (openai_key) {
+    try {
+      // Send request to OpenAI API
+      const openaiResponse = await axios.post(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          model: "gpt-4o",
+          messages: [
+            ...conversationHistory,
+            { role: "user", content: message },
+          ],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${openai_key}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log(
+        "OpenAI response:",
+        openaiResponse.data.choices[0].message.content
+      );
+
+      res.json({ response: openaiResponse.data.choices[0].message.content });
+    } catch (error) {
+      console.error("Error calling OpenAI API:", error);
+      res.status(500).json({ message: "Error calling OpenAI API" });
+    }
+  } else {
+    res.status(401).json({ message: "User's OpenAI key not available" });
+  }
 });
 
 router.get("/logout", (req, res) => {
