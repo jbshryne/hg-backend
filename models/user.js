@@ -1,14 +1,14 @@
 const mongoose = require("../db/connection");
 const { Schema, model } = mongoose;
 
-console.log("DATABASE_URL", process.env.DATABASE_URL);
-
 const userSchema = new Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  displayName: { type: String },
   openai_key: { type: String },
+  conversations: [{ type: Schema.Types.ObjectId, ref: "Conversation" }],
 });
 
-const User = new model("User", userSchema);
+const User = model("User", userSchema);
 
 module.exports = User;

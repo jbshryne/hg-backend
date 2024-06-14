@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/user");
+const Conversation = require("../models/conversation");
 const bcrypt = require("bcrypt");
 const axios = require("axios");
 
@@ -29,7 +30,11 @@ router.post("/login", async (req, res) => {
         // req.session.username = userToLogin.username;
 
         res.json({
-          user: { username: userToLogin.username, _id: userToLogin._id },
+          user: {
+            username: userToLogin.username,
+            _id: userToLogin._id,
+            displayName: userToLogin.displayName,
+          },
           message: "sucesss",
         });
       } else {
@@ -69,22 +74,44 @@ router.post("/signup", async (req, res) => {
 
 router.post("/user-message/:username", async (req, res) => {
   const username = req.params.username;
-  const { message, conversationHistory } = req.body;
-  const currentUser = await User.findOne({ username: username });
+  const { message, isNewConversation } = req.body;
 
+  const currentUser = await User.findOne({ username: username });
   const openai_key = currentUser.openai_key;
+
+  let conversation;
+
+  if (isNewConversation) {
+    // Create a new conversation if the flag is true
+    conversation = await Conversation.create({
+      user: currentUser._id,
+      messages: [{ role: "user", content: message }],
+    });
+
+    currentUser.conversations.push(conversation._id);
+    await currentUser.save();
+  } else {
+    // Find the most recent conversation if the flag is not true
+    conversation = await Conversation.findOne({ user: currentUser._id }).sort({
+      timestamp: -1,
+    });
+
+    if (!conversation) {
+      return res
+        .status(400)
+        .json({ message: "No existing conversation found." });
+    }
+
+    conversation.messages.push({ role: "user", content: message });
+  }
 
   if (openai_key) {
     try {
-      // Send request to OpenAI API
       const openaiResponse = await axios.post(
         "https://api.openai.com/v1/chat/completions",
         {
           model: "gpt-4o",
-          messages: [
-            ...conversationHistory,
-            { role: "user", content: message },
-          ],
+          messages: conversation.messages,
         },
         {
           headers: {
@@ -94,12 +121,16 @@ router.post("/user-message/:username", async (req, res) => {
         }
       );
 
-      console.log(
-        "OpenAI response:",
-        openaiResponse.data.choices[0].message.content
-      );
+      const aiResponseMessage = openaiResponse.data.choices[0].message.content;
+      conversation.messages.push({
+        role: "assistant",
+        content: aiResponseMessage,
+      });
 
-      res.json({ response: openaiResponse.data.choices[0].message.content });
+      await conversation.save();
+
+      console.log("OpenAI response:", aiResponseMessage);
+      res.json({ response: aiResponseMessage });
     } catch (error) {
       console.error("Error calling OpenAI API:", error);
       res.status(500).json({ message: "Error calling OpenAI API" });
