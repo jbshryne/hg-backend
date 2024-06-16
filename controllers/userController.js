@@ -72,71 +72,135 @@ router.post("/signup", async (req, res) => {
   }
 });
 
+// Helper function to generate a title using OpenAI's API
+async function generateTitle(openai_key, message) {
+  const promptArray = [
+    {
+      role: "system",
+      content: "You are a conversation title generator for a GPT chat app.",
+    },
+    {
+      role: "user",
+      content: `Generate a title for a GPT conversation that begins with the following prompt: '${message}'. Stick to a maximum of 40 characters. Reply with only the title.`,
+    },
+  ];
+
+  try {
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-4o",
+        messages: promptArray,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${openai_key}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    return response.data.choices[0].message.content;
+  } catch (error) {
+    console.error("Error generating title:", error);
+    throw new Error("Error generating title from OpenAI");
+  }
+}
+
+// Helper function to handle new conversation creation
+async function handleNewConversation(currentUser, message, openai_key) {
+  let newTitle;
+
+  try {
+    newTitle = await generateTitle(openai_key, message);
+  } catch (error) {
+    newTitle = "New Conversation";
+  }
+
+  const conversation = await Conversation.create({
+    user: currentUser._id,
+    messages: [{ role: "user", content: message }],
+    title: newTitle,
+  });
+
+  currentUser.conversations.push(conversation._id);
+  await currentUser.save();
+
+  return conversation;
+}
+
+// Helper function to get the most recent conversation
+async function getMostRecentConversation(currentUser) {
+  return await Conversation.findOne({ user: currentUser._id }).sort({
+    timestamp: -1,
+  });
+}
+
+// Main route handler
 router.post("/user-message/:username", async (req, res) => {
   const username = req.params.username;
   const { message, isNewConversation } = req.body;
 
-  const currentUser = await User.findOne({ username: username });
-  const openai_key = currentUser.openai_key;
+  try {
+    const currentUser = await User.findOne({ username: username });
 
-  let conversation;
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-  if (isNewConversation) {
-    // Create a new conversation if the flag is true
-    conversation = await Conversation.create({
-      user: currentUser._id,
-      messages: [{ role: "user", content: message }],
-    });
-
-    currentUser.conversations.push(conversation._id);
-    await currentUser.save();
-  } else {
-    // Find the most recent conversation if the flag is not true
-    conversation = await Conversation.findOne({ user: currentUser._id }).sort({
-      timestamp: -1,
-    });
-
-    if (!conversation) {
+    const { openai_key } = currentUser;
+    if (!openai_key) {
       return res
-        .status(400)
-        .json({ message: "No existing conversation found." });
+        .status(401)
+        .json({ message: "User's OpenAI key not available" });
     }
 
-    conversation.messages.push({ role: "user", content: message });
-  }
+    let conversation;
 
-  if (openai_key) {
-    try {
-      const openaiResponse = await axios.post(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          model: "gpt-4o",
-          messages: conversation.messages,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${openai_key}`,
-            "Content-Type": "application/json",
-          },
-        }
+    if (isNewConversation) {
+      conversation = await handleNewConversation(
+        currentUser,
+        message,
+        openai_key
       );
+    } else {
+      conversation = await getMostRecentConversation(currentUser);
 
-      const aiResponseMessage = openaiResponse.data.choices[0].message.content;
-      conversation.messages.push({
-        role: "assistant",
-        content: aiResponseMessage,
-      });
+      if (!conversation) {
+        return res
+          .status(400)
+          .json({ message: "No existing conversation found." });
+      }
 
-      await conversation.save();
-
-      console.log("OpenAI response:", aiResponseMessage);
-      res.json({ response: aiResponseMessage });
-    } catch (error) {
-      console.error("Error calling OpenAI API:", error);
-      res.status(500).json({ message: "Error calling OpenAI API" });
+      conversation.messages.push({ role: "user", content: message });
     }
-  } else {
-    res.status(401).json({ message: "User's OpenAI key not available" });
+
+    // OpenAI API interaction to get assistant's response
+    const openaiResponse = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-4o",
+        messages: conversation.messages,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${openai_key}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const aiResponseMessage = openaiResponse.data.choices[0].message.content;
+    conversation.messages.push({
+      role: "assistant",
+      content: aiResponseMessage,
+    });
+
+    await conversation.save();
+
+    return res.json({ response: aiResponseMessage });
+  } catch (error) {
+    console.error("Error processing message:", error);
+    res.status(500).json({ message: "Error processing message" });
   }
 });
 
