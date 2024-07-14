@@ -72,77 +72,11 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-// Helper function to generate a title using OpenAI's API
-async function generateTitle(openai_key, message) {
-  const promptArray = [
-    {
-      role: "system",
-      content: "You are a conversation title generator for a GPT chat app.",
-    },
-    {
-      role: "user",
-      content: `Generate a title for a GPT conversation that begins with the following prompt: '${message}'. Stick to a maximum of 40 characters. Reply with only the title, NOT enclosed in quotation marks.`,
-    },
-  ];
-
-  try {
-    const response = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        model: "gpt-4o",
-        messages: promptArray,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${openai_key}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-    return response.data.choices[0].message.content;
-  } catch (error) {
-    console.error("Error generating title:", error);
-    throw new Error("Error generating title from OpenAI");
-  }
-}
-
-// Helper function to handle new conversation creation
-async function handleNewConversation(currentUser, message, openai_key) {
-  let newTitle;
-
-  try {
-    newTitle = await generateTitle(openai_key, message);
-  } catch (error) {
-    newTitle = "New Conversation";
-  }
-
-  const conversation = await Conversation.create({
-    user: currentUser._id,
-    messages: [{ role: "user", content: message }],
-    title: newTitle,
-  });
-
-  currentUser.conversations.push(conversation._id);
-  await currentUser.save();
-
-  return conversation;
-}
-
-// // Helper function to get the most recent conversation
-// async function getMostRecentConversation(currentUser) {
-//   return await Conversation.findOne({ user: currentUser._id }).sort({
-//     timestamp: -1,
-//   });
-// }
-
 // Get list of user's conversations
 router.get("/conversations/:username", async (req, res) => {
   const username = req.params.username;
 
-  const currentUser = await User
-    .findOne
-    // { username: username }
-    ();
+  const currentUser = await User.findOne({ username: username });
 
   if (!currentUser) {
     return res.status(404).json({ message: "User not found" });
@@ -206,7 +140,7 @@ router.delete("/conversation/:conversationId", async (req, res) => {
   return res.json({ message: "Conversation deleted" });
 });
 
-// Main route handler
+// Send & receive messages
 router.post("/user-message/:username", async (req, res) => {
   const username = req.params.username;
   let { message, conversationId } = req.body;
@@ -279,5 +213,61 @@ router.get("/logout", (req, res) => {
   req.session.destroy();
   res.json({ message: "Logout successful" });
 });
+
+// HELPER FUNCTIONS
+
+async function generateTitle(openai_key, message) {
+  const promptArray = [
+    {
+      role: "system",
+      content: "You are a conversation title generator for a GPT chat app.",
+    },
+    {
+      role: "user",
+      content: `Generate a title for a GPT conversation that begins with the following prompt: '${message}'. Stick to a maximum of 40 characters. Reply with only the title, NOT enclosed in quotation marks.`,
+    },
+  ];
+
+  try {
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-4o",
+        messages: promptArray,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${openai_key}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    return response.data.choices[0].message.content;
+  } catch (error) {
+    console.error("Error generating title:", error);
+    throw new Error("Error generating title from OpenAI");
+  }
+}
+
+async function handleNewConversation(currentUser, message, openai_key) {
+  let newTitle;
+
+  try {
+    newTitle = await generateTitle(openai_key, message);
+  } catch (error) {
+    newTitle = "New Conversation";
+  }
+
+  const conversation = await Conversation.create({
+    user: currentUser._id,
+    messages: [{ role: "user", content: message }],
+    title: newTitle,
+  });
+
+  currentUser.conversations.push(conversation._id);
+  await currentUser.save();
+
+  return conversation;
+}
 
 module.exports = router;
