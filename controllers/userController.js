@@ -81,7 +81,7 @@ async function generateTitle(openai_key, message) {
     },
     {
       role: "user",
-      content: `Generate a title for a GPT conversation that begins with the following prompt: '${message}'. Stick to a maximum of 40 characters. Reply with only the title.`,
+      content: `Generate a title for a GPT conversation that begins with the following prompt: '${message}'. Stick to a maximum of 40 characters. Reply with only the title, NOT enclosed in quotation marks.`,
     },
   ];
 
@@ -135,10 +135,66 @@ async function getMostRecentConversation(currentUser) {
   });
 }
 
+// Get list of user's conversations
+router.get("/conversations/:username", async (req, res) => {
+  const username = req.params.username;
+
+  const currentUser = await User
+    .findOne
+    // { username: username }
+    ();
+
+  if (!currentUser) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  const conversations = await Conversation.find({ user: currentUser._id });
+
+  return res.json({ conversations: conversations });
+});
+
+// Get one conversation
+router.get("/conversation/:conversationId", async (req, res) => {
+  const conversationId = req.params.conversationId;
+
+  const conversation = await Conversation.findById(conversationId);
+
+  if (!conversation) {
+    return res.status(404).json({ message: "Conversation not found" });
+  }
+
+  return res.json({ conversation: conversation });
+});
+
+// Delete a conversation
+router.delete("/conversation/:conversationId", async (req, res) => {
+  const conversationId = req.params.conversationId;
+  console.log("conversationId: ", conversationId);
+
+  const conversation = await Conversation.findByIdAndDelete(conversationId);
+  console.log("conversation: ", conversation);
+
+  const currentUser = await User.findById(conversation.user);
+
+  currentUser.conversations = currentUser.conversations.filter(
+    (conversation) => conversation._id != conversationId
+  );
+
+  await currentUser.save();
+
+  if (!conversation) {
+    return res.status(404).json({ message: "Conversation not found" });
+  }
+
+  return res.json({ message: "Conversation deleted" });
+});
+
 // Main route handler
 router.post("/user-message/:username", async (req, res) => {
   const username = req.params.username;
-  const { message, isNewConversation } = req.body;
+  let { message, conversationId } = req.body;
+
+  let conversation;
 
   try {
     const currentUser = await User.findOne({ username: username });
@@ -154,16 +210,14 @@ router.post("/user-message/:username", async (req, res) => {
         .json({ message: "User's OpenAI key not available" });
     }
 
-    let conversation;
-
-    if (isNewConversation) {
+    if (!conversationId) {
       conversation = await handleNewConversation(
         currentUser,
         message,
         openai_key
       );
     } else {
-      conversation = await getMostRecentConversation(currentUser);
+      conversation = await Conversation.findById(conversationId);
 
       if (!conversation) {
         return res
@@ -197,7 +251,7 @@ router.post("/user-message/:username", async (req, res) => {
 
     await conversation.save();
 
-    return res.json({ response: aiResponseMessage });
+    return res.json({ response: aiResponseMessage, title: conversation.title });
   } catch (error) {
     console.error("Error processing message:", error);
     res.status(500).json({ message: "Error processing message" });
