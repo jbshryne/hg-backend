@@ -128,12 +128,12 @@ async function handleNewConversation(currentUser, message, openai_key) {
   return conversation;
 }
 
-// Helper function to get the most recent conversation
-async function getMostRecentConversation(currentUser) {
-  return await Conversation.findOne({ user: currentUser._id }).sort({
-    timestamp: -1,
-  });
-}
+// // Helper function to get the most recent conversation
+// async function getMostRecentConversation(currentUser) {
+//   return await Conversation.findOne({ user: currentUser._id }).sort({
+//     timestamp: -1,
+//   });
+// }
 
 // Get list of user's conversations
 router.get("/conversations/:username", async (req, res) => {
@@ -164,6 +164,23 @@ router.get("/conversation/:conversationId", async (req, res) => {
   }
 
   return res.json({ conversation: conversation });
+});
+
+// Edit a conversation title
+router.put("/conversation/:conversationId", async (req, res) => {
+  const conversationId = req.params.conversationId;
+  const newTitle = req.body.title;
+
+  const conversation = await Conversation.findById(conversationId);
+
+  if (!conversation) {
+    return res.status(404).json({ message: "Conversation not found" });
+  }
+
+  conversation.title = newTitle;
+  await conversation.save();
+
+  return res.json({ message: "Conversation title updated" });
 });
 
 // Delete a conversation
