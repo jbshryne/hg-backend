@@ -72,6 +72,11 @@ router.post("/signup", async (req, res) => {
   }
 });
 
+router.get("/logout", (req, res) => {
+  req.session.destroy();
+  res.json({ message: "Logout successful" });
+});
+
 // Get list of user's conversations
 router.get("/conversations/:username", async (req, res) => {
   const username = req.params.username;
@@ -202,16 +207,15 @@ router.post("/user-message/:username", async (req, res) => {
 
     await conversation.save();
 
-    return res.json({ response: aiResponseMessage, title: conversation.title });
+    return res.json({
+      response: aiResponseMessage,
+      title: conversation.title,
+      conversationId: conversation._id,
+    });
   } catch (error) {
     console.error("Error processing message:", error);
     res.status(500).json({ message: "Error processing message" });
   }
-});
-
-router.get("/logout", (req, res) => {
-  req.session.destroy();
-  res.json({ message: "Logout successful" });
 });
 
 // HELPER FUNCTIONS
