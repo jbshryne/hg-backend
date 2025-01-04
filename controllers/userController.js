@@ -148,7 +148,9 @@ router.delete("/conversation/:conversationId", async (req, res) => {
 // Send & receive messages
 router.post("/user-message/:username", async (req, res) => {
   const username = req.params.username;
-  let { message, conversationId } = req.body;
+  let { model, message, conversationId } = req.body;
+
+  console.log("model: ", model);
 
   let conversation;
 
@@ -188,7 +190,7 @@ router.post("/user-message/:username", async (req, res) => {
     const openaiResponse = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
-        model: "gpt-4o",
+        model: model,
         messages: conversation.messages,
       },
       {
@@ -200,6 +202,9 @@ router.post("/user-message/:username", async (req, res) => {
     );
 
     const aiResponseMessage = openaiResponse.data.choices[0].message.content;
+
+    console.log("OpenAI Response:", openaiResponse);
+
     conversation.messages.push({
       role: "assistant",
       content: aiResponseMessage,
@@ -213,7 +218,7 @@ router.post("/user-message/:username", async (req, res) => {
       conversationId: conversation._id,
     });
   } catch (error) {
-    console.error("Error processing message:", error);
+    // console.error("Error processing message:", error);
     res.status(500).json({ message: "Error processing message" });
   }
 });
